@@ -1,0 +1,86 @@
+service:
+
+  name: ${opt:App}-${opt:Stage}-db-lower-environment
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  region: ${opt:Region,''us-east-1''}
+  stackName: ${opt:App}-${opt:Stage}-db-lower-environment
+  stackTags:
+    owner: ${opt:Owner,''Nobody''}
+  stage: ${opt:Stage,''dev''}
+
+custom:
+
+  AuroraMySqlEngineVersion: ${opt:AuroraMySqlEngineVersion,''5.7.mysql_aurora.2.07.0''}
+  CreateDns: ${opt:CreateDns,'true'}
+  RdsInstanceType: ${opt:RdsInstanceType,''db.t3.small''}
+
+resources:
+
+  Mappings:
+
+    Subnets:
+      #main-prd-vpc
+      vpc-06d9599bc403469f9:
+        private: subnet-0520f936a41312456,subnet-0223b98b7f2abb744,subnet-0c352db2a19e5b440
+        privateNat: subnet-0a285cea25c5576a7,subnet-0881bfbac3d908d2a,subnet-05aa6e1e0d8054668
+        public: subnet-08ba85285cc61f3bc,subnet-0f0978328a8925c71,subnet-0e54caa00266e93d5
+
+      #main-dev-vpc
+      vpc-0bb6c7d7d3ac936d4:
+        private: subnet-0c34414bca0569883,subnet-06a5cbc0a5b538229,subnet-0f19d11e10a5d0aed
+        privateNat: subnet-0742cdf24e8ef1f17,subnet-03147e63245e28f94,subnet-0677ffeecfbaaaa66
+        public: subnet-0541716ffb462e081,subnet-0448f55ac95ec7789,subnet-042eb1a5009dd959a
+
+      #main-mumbai-dev-vpc
+      vpc-0a258a54157924a34:
+        private: subnet-0b2aa167993e3719d,subnet-08129110d30c3ca57,subnet-02a73fa4f9d27fc68
+        privateNat: subnet-0f1a0322427f843b0,subnet-097185e511e374945,subnet-032a1a1b8d9af9bee
+        public: subnet-06ccf3defdd3a5554,subnet-05f6505298a0859b1,subnet-01ad0d7e48beaf6c0
+
+      #main-mumbai-prd-vpc
+      vpc-0890f00b42cdd086b:
+        private: subnet-0e2f6fba8cbc40a42,subnet-053721d440156e4b1,subnet-0cab2ecba306c7d10
+        privateNat: subnet-04b1e37a6d99532bf,subnet-023b7589fd0b51c54,subnet-0df916e6af8d6d974
+        public: subnet-0cc46bc4b561dc8c8,subnet-0c3d4edddd45db5a6,subnet-0f5482aca9572a998
+
+    Cidrs:
+      #main-prd-vpc
+      vpc-06d9599bc403469f9:
+        Cidr: 10.193.0.0/16
+
+      #main-dev-vpc
+      vpc-0bb6c7d7d3ac936d4:
+        Cidr: 10.192.0.0/16
+
+      #main-mumbai-dev-vpc
+      vpc-0a258a54157924a34:
+        Cidr: 10.197.0.0/16
+
+      #main-mumbai-prd-vpc
+      vpc-0890f00b42cdd086b:
+        Cidr: 10.198.0.0/16
+
+  Resources:
+
+    DatabaseClusterStack:
+      Type: AWS::CloudFormation::Stack
+      Properties:
+        Parameters:
+          AuroraMySqlEngineVersion: ${self:custom.AuroraMySqlEngineVersion}
+          CreateDns: ${self:custom.CreateDns}
+          DatabaseSubnetA: !Select [ 0, !Split [ ',', !FindInMap [ Subnets, '${opt:VpcId}', private ] ] ]
+          DatabaseSubnetB: !Select [ 1, !Split [ ',', !FindInMap [ Subnets, '${opt:VpcId}', private ] ] ]
+          RdsInstanceType: ${self:custom.RdsInstanceType}
+          ServiceName: ${opt:App}
+          SnapshotIdentifier: ${opt:SnapshotIdentifier}
+          Stage: ${opt:Stage}
+          Version: ${opt:Version}
+          VpcCidrBlock: !FindInMap [ Cidrs, '${opt:VpcId}', Cidr ]
+          VpcId: ${opt:VpcId}
+        TemplateURL: ${opt:StackUrl}rds-cluster.yml

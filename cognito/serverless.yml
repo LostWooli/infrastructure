@@ -1,0 +1,86 @@
+service:
+
+  name: '${opt:APP}'
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  stage: '${opt:stage,''dev''}'
+  stackName: 'Cognito-${opt:APP}-${self:provider.stage}'
+
+custom:
+
+  stages:
+    - dev
+    - uat
+    - qa
+    - sbx
+    - mig
+    - pa1
+    - prd
+  Appclient: '${opt:Appclient}'
+
+resources:
+
+  Resources:
+    UserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        AdminCreateUserConfig:
+          AllowAdminCreateUserOnly: True
+        AliasAttributes:
+          - preferred_username
+        MfaConfiguration: OFF
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 14
+            RequireLowercase: True
+            RequireNumbers: True
+            RequireSymbols: True
+            RequireUppercase: True
+            TemporaryPasswordValidityDays: 90
+        Schema:
+          - AttributeDataType: String
+            Mutable: True
+            Name: merchant_id
+            Required: False
+          - AttributeDataType: String
+            Mutable: True
+            Name: sso_username
+            Required: False
+        UserPoolName: '${opt:APP}-${self:provider.stage}'
+        UserPoolTags: {
+          "Stack" : '${self:provider.stage}',
+          "Name" : '${opt:APP}-${self:provider.stage}'
+        }
+#    UserPoolClient:
+#      Type: "AWS::Cognito::UserPoolClient"
+#      Properties:
+#        ClientName: '${self:custom.Appclient}-${self:provider.stage}'
+#        GenerateSecret: True
+#        UserPoolId: !Ref UserPool
+    UserPoolWorldpayClient:
+      Type: "AWS::Cognito::UserPoolClient"
+      Properties:
+        ClientName: 'worldpay'
+        SupportedIdentityProviders:
+          - test-idp
+        AllowedOAuthFlows:
+          - implicit
+        AllowedOAuthFlowsUserPoolClient: True
+        AllowedOAuthScopes:
+          - openid
+          - profile
+        GenerateSecret: True
+        UserPoolId: !Ref UserPool
+        CallbackURLs:
+          - 'http://localhost/cognito-login'
+
+
+#plugins:
+#  - serverless-resources-env
+#  - serverless-stage-manager
+#  - serverless-pseudo-parameters

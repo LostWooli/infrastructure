@@ -1,0 +1,43 @@
+service:
+    name: 'predeploydependencies'
+  
+provider:
+    #deploymentBucket:
+        #name: ${opt:accountid}-serverless-deployment
+    name: aws
+    stage: 'prd'
+    region: 'us-east-1'
+    stackName: 'predeploydependencies'
+
+resources:
+  Resources:
+    ##########################################################################
+    #Create predeploy dependencies
+    ##########################################################################
+    ServerlessS3Bucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${opt:accountid}-serverless-deployment-${opt:region}
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        Tags:
+          - Key: APP
+            Value: devops
+          - Key: Stage
+            Value: prd
+
+    sessionlogbucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${opt:accountid}-session-logbucket
+        BucketEncryption:
+          ServerSideEncryptionConfiguration:
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        Tags:
+          - Key: APP
+            Value: devops
+          - Key: Stage
+            Value: prd

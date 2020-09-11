@@ -1,0 +1,120 @@
+service:
+
+  name: sftp-transfer-user
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  stage: ${opt:Stage,''dev''}
+  region: ${opt:Region,''us-east-1''}
+  stackName: sftp-${opt:Stage}-user-${opt:UserName}
+  stackTags:
+    owner: ${opt:Owner, ''Nobody''}
+
+custom:
+
+  stages:
+    - sales
+    - dev
+    - dev-demo
+    - uat
+    - qa
+    - sbx
+    - mig
+    - pa1
+    - prd
+    - sbx
+    - demo
+    - dev-mumbai
+    - prd-mumbai
+
+  StackName: sftp-${opt:Stage}-user-${opt:UserName}
+
+resources:
+
+  Resources:
+
+    SftpIamRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:custom.StackName}-user-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - transfer.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        Policies:
+          - PolicyName: ${self:custom.StackName}-s3-home-dir-access-policy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:PutObject
+                    - s3:GetObject
+                    - s3:DeleteObject
+                  Resource: 'arn:aws:s3:::${opt:S3Bucket}/${opt:S3Folder}*'
+        Tags:
+          - Key: APP
+            Value: sftp-transfer
+#        - Key: Stage
+#          Value: !Ref Stage
+
+    SftpUser:
+      Type: AWS::Transfer::User
+      Properties:
+        HomeDirectoryMappings:
+          - Entry: '/'
+            Target: '/${opt:S3Bucket}/${opt:S3Folder}'
+        HomeDirectoryType: LOGICAL
+        Policy: >
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+            {
+              "Effect": "Allow",
+              "Action": "s3:ListBucket",
+              "Resource": "arn:aws:s3:::${opt:S3Bucket}",
+              "Condition": {
+                "StringLike": {
+                  "s3:prefix": [
+                    "home/${opt:UserName}/*",
+                    "home/${opt:UserName}"
+                  ]
+                }
+              }
+            },
+            {
+              "Sid": "HomeDirObjectAccess",
+              "Effect": "Allow",
+              "Action": [
+                "s3:PutObject",
+                "s3:GetObject",
+                "s3:DeleteObject"
+              ],
+              "Resource": "arn:aws:s3:::${opt:S3Bucket}/${opt:S3Folder}/*"
+            }
+            ]
+          }
+        Role: !GetAtt SftpIamRole.Arn
+        ServerId: ${opt:ServerId}
+        SshPublicKeys:
+          - ${opt:SshPublicKey}
+        Tags:
+          - Key: APP
+            Value: sftp-transfer
+          - Key: AWS_REGION
+            Value: ${opt:Region}
+          - Key: Stage
+            Value: ${opt:Stage}
+        UserName: ${opt:UserName}
+
+#  Outputs:

@@ -1,0 +1,94 @@
+service:
+  name: ${opt:client,''devops''}-dbusers
+
+provider:
+
+   deploymentBucket:
+      name: 492239587024-serverless-deployment
+
+   name: aws
+   runtime: python3.7
+   stage: '${opt:stage,''dev''}'
+   timeout: 30
+   region: ${opt:region,''us-east-1''}
+   stackName: ${opt:client}-dbusers-delete-Lambda-${self:provider.stage}
+
+functions:
+   devopsdeletedbusers:
+      handler: devops_delete_dbusers.lambda_handler
+      role: devopsdbusersdeletelambdarole
+      memorySize: 256
+      vpc:
+         securityGroupIds:
+            - sg-01e00371ebda8d430
+         subnetIds:
+            - subnet-0a285cea25c5576a7
+            - subnet-0881bfbac3d908d2a
+            - subnet-05aa6e1e0d8054668
+
+resources:
+   Resources:
+      devopsdbusersdeletelambdarole:
+         Type: 'AWS::IAM::Role'
+         Properties:
+            Path: /
+            RoleName: 'LambdaRole-${self:provider.stackName}-${self:provider.stage}'
+            AssumeRolePolicyDocument:
+               Version: '2012-10-17'
+               Statement:
+                  -
+                     Effect: Allow
+                     Principal:
+                        Service:
+                           - lambda.amazonaws.com
+                     Action: 'sts:AssumeRole'
+            Policies:
+               -
+                  PolicyName: 'LambdaPolicy-${self:provider.stackName}-${self:provider.stage}'
+                  PolicyDocument:
+                     Version: '2012-10-17'
+                     Statement:
+                        -
+                           Effect: Allow
+                           Action:
+                              - 'iam:ListRoleTags'
+                              - 'iam:ListUserPolicies'
+                              - 'iam:ListUsers'
+                              - 'iam:GetUser'
+                              - 'ec2:CreateNetworkInterface'
+                              - 'ec2:DescribeNetworkInterfaces'
+                              - 'ec2:DeleteNetworkInterface'
+                              - 'ec2:DescribeSubnets'
+                              - 'ec2:DescribeVpcs'
+                              - 'ec2:DescribeSecurityGroups'
+                              - 'ec2:DescribeNetworkInterfaces'
+                              - 'secretsmanager:ListSecrets'
+
+                           Resource: '*'
+                        -
+                           Effect: Allow
+                           Action:
+                              - 'secretsmanager:GetSecretValue'
+                              - 'secretsmanager:GetResourcePolicy'
+                              - 'secretsmanager:DescribeSecret'
+                              - 'secretsmanager:ListSecretVersionIds'
+                           Resource:
+                              - 'arn:aws:secretsmanager:*:*:secret:/dbcreds/*'
+                              - 'arn:aws:secretsmanager:us-east-1:492239587024:secret:/devops/user_automation_admin*'
+                        -
+                           Effect: Allow
+                           Action:
+                              - 'logs:CreateLogGroup'
+                              - 'logs:CreateLogStream'
+                              - 'logs:PutLogEvents'
+                           Resource:
+                              -
+                                 'Fn::Join':
+                                    - ':'
+                                    -
+                                       - 'arn:aws:logs'
+                                       -
+                                          Ref: 'AWS::Region'
+                                       -
+                                          Ref: 'AWS::AccountId'
+                                       - 'log-group:/aws/lambda/*:*:*'

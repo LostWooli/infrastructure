@@ -1,0 +1,63 @@
+Parameters:
+
+  ElasticSearchInstanceType:
+    Default: t2.small.elasticsearch
+    Type: String
+
+  ServiceName:
+    Type: String
+
+  Stage:
+    Type: String
+
+  SubnetGroupList:
+    Type: CommaDelimitedList
+
+  VpcCidrBlock:
+    Type: String
+
+  VpcId:
+    Type: String
+
+Resources:
+
+  ElasticSearchDomain:
+    Type: AWS::Elasticsearch::Domain
+    Properties:
+      EBSOptions:
+        EBSEnabled: true
+        VolumeSize: 10
+        VolumeType: gp2
+      ElasticsearchClusterConfig:
+        DedicatedMasterCount: 3
+        DedicatedMasterEnabled: true
+        DedicatedMasterType: !Ref ElasticSearchInstanceType
+        InstanceCount: 1
+        InstanceType: !Ref ElasticSearchInstanceType
+      ElasticsearchVersion: 7.1
+      VPCOptions:
+        SecurityGroupIds:
+          - !GetAtt ElasticSearchSecurityGroup.GroupId
+        SubnetIds:
+          - !Select [ 0, !Ref SubnetGroupList ]
+
+  ElasticSearchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ServiceName}-${Stage}
+      GroupName: !Sub ${ServiceName}-${Stage}-elastisearch-security-group
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCidrBlock
+          FromPort: 9200
+          ToPort: 9200
+          IpProtocol: tcp
+        - CidrIp: !Ref VpcCidrBlock
+          FromPort: 9300
+          ToPort: 9300
+          IpProtocol: tcp
+      VpcId: !Ref VpcId
+
+Outputs:
+
+  DomainEndpoint:
+    Value: !GetAtt ElasticSearchDomain.DomainEndpoint

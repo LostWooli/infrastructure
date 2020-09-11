@@ -1,0 +1,521 @@
+service:
+  name: '${opt:name}'
+
+provider:
+  name: aws
+  deploymentBucket:
+    name: ${opt:accountid}-serverless-deployment-${opt:region}
+
+  stage: '${opt:stage,''dev''}'
+  region: ${opt:region,''us-east-1''}
+  stackName: '${opt:name}-${self:provider.stage}'
+
+resources:
+  Resources:
+##########################################################################
+#CREATE VPC
+##########################################################################
+
+    VPC:
+      Type: 'AWS::EC2::VPC'
+      Properties:
+        EnableDnsSupport: 'true'
+        EnableDnsHostnames: 'true'
+        CidrBlock:  '${opt:ip-address-prefix}.0.0/16'
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-vpc
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+#CREATE SUBNETS
+##########################################################################
+    PublicSubnetA:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'a' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.0.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-public-subnet-a
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PublicSubnetB:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'b' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.16.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-public-subnet-b
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PublicSubnetC:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'c' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.32.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-public-subnet-c
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+    PrivateNATSubnetA:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'a' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.48.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-NAT-subnet-a
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateNATSubnetB:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'b' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.64.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-NAT-subnet-b
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateNATSubnetC:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'c' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.80.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-NAT-subnet-c
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+    PrivateSubnetA:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'a' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.96.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-subnet-a
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateSubnetB:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'b' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.112.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-subnet-b
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateSubnetC:
+      Type: AWS::EC2::Subnet
+      Properties:
+        AvailabilityZone: !Join [ "", [ '${self:provider.region}', 'c' ] ]
+        CidrBlock: '${opt:ip-address-prefix}.128.0/20'
+        VpcId: !Ref VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-subnet-c
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+#CREATE ELASTIC IPS
+##########################################################################
+    PrivateNATSubnetAElasticIP:  
+      Type: AWS::EC2::EIP
+      Properties: 
+        Domain: vpc
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateNATSubnetBElasticIP:  
+      Type: AWS::EC2::EIP
+      Properties: 
+        Domain: vpc
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateNATSubnetCElasticIP:  
+      Type: AWS::EC2::EIP
+      Properties: 
+        Domain: vpc
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+#CREATE IGW GATEWAYS
+##########################################################################
+    VPCIGW:
+      Type: AWS::EC2::InternetGateway
+      Properties: 
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-IGW
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    VPCIGWAttachment:
+      Type: AWS::EC2::VPCGatewayAttachment
+      Properties: 
+        InternetGatewayId: !Ref VPCIGW
+        VpcId: !Ref VPC
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+#CREATE NAT GATEWAYS
+##########################################################################
+    PrivateNATSubnetaNATGateway:
+      Type: AWS::EC2::NatGateway
+      Properties: 
+        AllocationId: !GetAtt PrivateNATSubnetAElasticIP.AllocationId
+        SubnetId: !Ref PublicSubnetA
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-NAT-a
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateNATSubnetbNATGateway:
+      Type: AWS::EC2::NatGateway
+      Properties: 
+        AllocationId: !GetAtt PrivateNATSubnetBElasticIP.AllocationId
+        SubnetId: !Ref PublicSubnetC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-NAT-b
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateNATSubnetcNATGateway:
+      Type: AWS::EC2::NatGateway
+      Properties: 
+        AllocationId: !GetAtt PrivateNATSubnetCElasticIP.AllocationId
+        SubnetId: !Ref PublicSubnetC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-private-NAT-c
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+##########################################################################
+#CREATE ROUTE TABLES
+##########################################################################
+    PublicRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId:  
+          Ref: VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-Public-Route-Table
+
+    PublicRoute:
+      Type: AWS::EC2::Route
+      Properties: 
+        DestinationCidrBlock: 0.0.0.0/0
+        GatewayId: !Ref VPCIGW
+        RouteTableId: !Ref PublicRouteTable
+
+    PublicRouteSubnetAssocA:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:  
+        RouteTableId: !Ref PublicRouteTable
+        SubnetId: !Ref PublicSubnetA
+    PublicRouteSubnetAssocB:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:  
+        RouteTableId: !Ref PublicRouteTable
+        SubnetId: !Ref PublicSubnetB
+    PublicRouteSubnetAssocC:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:  
+        RouteTableId: !Ref PublicRouteTable
+        SubnetId: !Ref PublicSubnetC
+
+##########################################################################
+    PrivateANatRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId:  
+          Ref: VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-Private-A-Nat-Route-Table
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    PrivateRouteA:
+      Type: AWS::EC2::Route
+      Properties: 
+        DestinationCidrBlock: 0.0.0.0/0
+        NatGatewayId: !Ref PrivateNATSubnetaNATGateway
+        RouteTableId: !Ref PrivateANatRouteTable
+    
+    PrivateRouteASubnetAssoc:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties: 
+        RouteTableId: !Ref PrivateANatRouteTable
+        SubnetId: !Ref PrivateNATSubnetA
+
+    PrivateBNatRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId:  
+          Ref: VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-Private-B-Nat-Route-Table
+
+    PrivateRouteB:
+      Type: AWS::EC2::Route
+      Properties: 
+        DestinationCidrBlock: 0.0.0.0/0
+        NatGatewayId: !Ref PrivateNATSubnetbNATGateway
+        RouteTableId: !Ref PrivateBNatRouteTable
+
+    PrivateRouteBSubnetAssoc:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties: 
+        RouteTableId: !Ref PrivateBNatRouteTable
+        SubnetId: !Ref PrivateNATSubnetB
+
+    PrivateCNatRouteTable:
+      Type: AWS::EC2::RouteTable
+      Properties:
+        VpcId:  
+          Ref: VPC
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-Private-C-Nat-Route-Table
+    
+    PrivateRouteC:
+      Type: AWS::EC2::Route
+      Properties: 
+        DestinationCidrBlock: 0.0.0.0/0
+        NatGatewayId: !Ref PrivateNATSubnetcNATGateway
+        RouteTableId: !Ref PrivateCNatRouteTable
+
+    PrivateRouteCSubnetAssoc:
+      Type: AWS::EC2::SubnetRouteTableAssociation
+      Properties:  
+        RouteTableId: !Ref PrivateCNatRouteTable
+        SubnetId: !Ref PrivateNATSubnetC
+##########################################################################
+#Create Bastion
+##########################################################################
+    Ec2IamRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        Path: /
+        RoleName: 'EC2-${self:provider.stackName}-bastion-${opt:region}'
+        ManagedPolicyArns:
+          - "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        AssumeRolePolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                  Effect: Allow
+                  Principal:
+                    Service:
+                        - ec2.amazonaws.com
+                  Action: 'sts:AssumeRole'
+        Policies:
+            -
+              PolicyName: 'EC2Policy-${self:provider.stackName}-${opt:region}'
+              PolicyDocument:
+                  Version: '2012-10-17'
+                  Statement:
+                    -
+                        Effect: Allow
+                        Action:
+                          - 'ec2:DescribeTags'
+                          - 'ssm:GetParameters'
+                          - 'ssm:GetParametersByPath'
+                          - 'ssm:GetParameter'
+                        Resource: '*'
+                    -
+                        Effect: Allow
+                        Action:
+                          - 'secretsmanager:GetSecretValue'
+                          - 'secretsmanager:DescribeSecret'
+                        Resource: 'arn:aws:secretsmanager:us-east-1:492239587024:secret:cbk-builds-ers-R04cya'
+                    -
+                        Effect: Allow
+                        Action:
+                          - 'secretsmanager:ListSecrets'
+                        Resource: '*'     
+                    -
+                        Effect: Deny
+                        Action:
+                          - 'lambda:CreateFunction'
+                          - 'lambda:AddPermission'
+                          - 'lambda:DeleteFunction'
+                        Resource: '*'
+                    -
+                        Effect: Allow
+                        Action:
+                          - 'route53:GetHostedZone'
+                          - 'route53:ChangeResourceRecordSets'
+                          - 'route53:ListResourceRecordSets'
+                        Resource: 'arn:aws:route53:::hostedzone/${opt:hostedzoneid}'
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    IamInstanceProfile:
+      Type: AWS::IAM::InstanceProfile
+      Properties:
+        Roles:
+          - !Ref Ec2IamRole
+        InstanceProfileName: 'EC2-${self:provider.stackName}-bastion-${opt:region}'
+
+    BastionSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Allow ssh to bastion host
+        VpcId:
+          Ref: VPC
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 22
+            ToPort: 22
+            CidrIp: 97.78.134.98/32
+        SecurityGroupEgress:
+          - CidrIp: !GetAtt VPC.CidrBlock
+            FromPort: 22
+            ToPort: 22
+            IpProtocol: tcp
+          - CidrIp: !GetAtt VPC.CidrBlock
+            FromPort: 3306
+            ToPort: 3306
+            IpProtocol: tcp
+          - CidrIp: '0.0.0.0/0'
+            FromPort: 443
+            ToPort: 443
+            IpProtocol: tcp
+          - CidrIp: '0.0.0.0/0'
+            FromPort: 80
+            ToPort: 80
+            IpProtocol: tcp
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+
+    BastionInstance:
+      Type: AWS::EC2::Instance
+      Properties: 
+        ImageId: ${opt:bastionami}
+        InstanceType: t3.small
+        IamInstanceProfile: !Ref IamInstanceProfile
+        SecurityGroupIds:
+          - !Ref BastionSecurityGroup
+        SubnetId: !Ref PublicSubnetA
+        Tags:
+          - Key: Name
+            Value: ${opt:name}-${opt:stage}-bastion-${opt:region}
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+        UserData:
+          Fn::Base64:
+            Fn::Join:
+              - ''
+              - - "#!/bin/bash\n"
+                - "sudo snap install amazon-ssm-agent --classic\n"
+                - "curl --tlsv1.2 --silent --show-error --header 'x-connect-key: 3801ab5fb1c121c1c10fbbc5bc1a4bb27d46ef39' https://kickstart.jumpcloud.com/Kickstart | sudo bash\n"
+                - "hostname ${opt:name}-${opt:stage}-bastion-${opt:region}"
+
+    BastionElasticIp:
+      Type: AWS::EC2::EIP
+      Properties:
+        Domain: vpc
+        InstanceId: !Ref BastionInstance
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}
+      DependsOn:
+        - BastionInstance
+
+    
+    DnsRecord:
+      Type: AWS::Route53::RecordSet
+      Properties:
+        HostedZoneId:  ${opt:hostedzoneid}
+        Name: '${opt:name}-${self:provider.stage}-${opt:region}-bastion.${opt:domain}'
+        Type: A
+        TTL: 900
+        ResourceRecords:
+          - !Ref BastionElasticIp

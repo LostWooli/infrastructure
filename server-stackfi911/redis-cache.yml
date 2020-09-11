@@ -1,0 +1,98 @@
+Parameters:
+
+  CacheNodeType:
+    Default: cache.t2.micro
+    Type: String
+
+  ClusterName:
+    Default: redis-cache
+    Type: String
+
+  ServiceName:
+    Type: String
+
+  Stage:
+    Type: String
+
+  SubnetGroupList:
+    Type: CommaDelimitedList
+
+  VpcCidrBlock:
+    Type: String
+
+  VpcId:
+    Type: String
+
+Resources:
+
+  RedisCacheCluster:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      CacheNodeType: !Ref CacheNodeType
+      CacheParameterGroupName: !Ref RedisCacheParameterGroup2
+      CacheSubnetGroupName: !Sub ${ServiceName}-${Stage}-redis-subnet-group
+      ClusterName: !Sub ${ServiceName}-${Stage}-${ClusterName}-cluster
+      Engine: redis
+      EngineVersion: 5.0.0
+      NumCacheNodes: 1
+      PreferredMaintenanceWindow: 'sun:19:00-sun:20:00' #Times are in UTC; minimum window is one hour
+      VpcSecurityGroupIds:
+        - !GetAtt RedisCacheSecurityGroup.GroupId
+    DependsOn:
+      - RedisCacheParameterGroup2
+      - RedisCacheSecurityGroup
+      - RedisCacheSubnetGroup
+
+  RedisCacheParameterGroup2:
+    Type: AWS::ElastiCache::ParameterGroup
+    Properties:
+      CacheParameterGroupFamily: redis5.0
+      Description: !Sub ${ServiceName}-${Stage}
+      Properties:
+        "maxmemory-policy": 'allkeys-lru'
+
+  RedisCacheSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${ServiceName}-${Stage}
+      GroupName: !Sub ${ServiceName}-${Stage}-redis-cache-security-group
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCidrBlock
+          FromPort: 6379
+          ToPort: 6379
+          IpProtocol: tcp
+      VpcId: !Ref VpcId
+
+  RedisCacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: !Sub ${ServiceName}-${Stage}-redis-subnet-group
+      Description: !Sub ${ServiceName}-${Stage}
+      SubnetIds: !Ref SubnetGroupList
+
+  RedisEndpointSsmParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub /${ServiceName}/${Stage}/REDIS_HOST
+      Type: String
+      Value: !GetAtt RedisCacheCluster.RedisEndpoint.Address
+    DependsOn:
+      - RedisCacheCluster
+
+  RedisRoute53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      #Internal rds.chargebacks911.com
+      HostedZoneId: Z2D0SECHI0V8LW
+      Name: !Sub ${ServiceName}-${Stage}-redis.internal.chargebacks911.com
+      ResourceRecords:
+        - !GetAtt RedisCacheCluster.RedisEndpoint.Address
+      TTL: 300
+      Type: CNAME
+    DependsOn:
+      - RedisCacheCluster
+
+Outputs:
+
+  RedisEndpoint:
+    Value: !GetAtt RedisCacheCluster.RedisEndpoint.Address

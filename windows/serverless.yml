@@ -1,0 +1,104 @@
+#This template is for 4 windows instances one in public subnet then one in each private with NAT subnet so emulation team can login from the NAT ips and validate credentials
+
+service:
+    name: ${opt:App}
+  
+provider:
+    deploymentBucket:
+        name: ${opt:accountid}-serverless-deployment
+
+    name: aws
+    stage: ${opt:Stage,''dev''}
+    region: ${opt:Region,''us-east-1''}
+    stackName: ${opt:App}-${opt:Stage}
+    stackTags:
+        owner: ${opt:Owner, ''Nobody''}
+    StackName: ${opt:App}-${opt:Stage}
+  
+resources:
+    Resources:
+
+        windowspublicrdpbastion:
+            Type: AWS::EC2::Instance
+            Properties: 
+                ImageId: ami-032c2c4b952586f02
+                InstanceType: t3.small
+                KeyName: windowsbastion
+                SecurityGroupIds: 
+                    - sg-0b11bf7dd51138b72
+                SubnetId: subnet-08ba85285cc61f3bc
+                Tags:
+                    - Key: APP
+                      Value: "emulation"
+                    - Key: Stage
+                      Value: "prd"
+                    - Key: Name
+                      Value: "emulation-public-bastion"
+
+        BastionElasticIp:
+            Type: AWS::EC2::EIP
+            Properties:
+                Domain: vpc
+                InstanceId: !Ref windowspublicrdpbastion
+                Tags:
+                    - Key: APP
+                      Value: "emulation"
+                    - Key: Stage
+                      Value: "prd"
+                    - Key: Name
+                      Value: "emulation-public-bastion-ip"
+            DependsOn:
+                - windowspublicrdpbastion
+
+        windowsprivateemulationhosta:
+            Type: AWS::EC2::Instance
+            Properties: 
+                ImageId: ami-032c2c4b952586f02
+                InstanceType: t3.micro
+                KeyName: windowsbastion
+                SecurityGroupIds: 
+                    - sg-0b11bf7dd51138b72
+                SubnetId: subnet-0a285cea25c5576a7
+                Tags:
+                    - Key: APP
+                      Value: "emulation"
+                    - Key: Stage
+                      Value: "prd"
+                    - Key: Name
+                      Value: "emulation-private-a-bastion"
+
+
+        windowsprivateemulationhostb:
+            Type: AWS::EC2::Instance
+            Properties: 
+                ImageId: ami-032c2c4b952586f02
+                InstanceType: t3.micro
+                KeyName: windowsbastion
+                SecurityGroupIds: 
+                    - sg-0b11bf7dd51138b72
+                SubnetId: subnet-0881bfbac3d908d2a
+                Tags: 
+                    - Key: APP
+                      Value: "emulation"
+                    - Key: Stage
+                      Value: "prd"
+                    - Key: Name
+                      Value: "emulation-private-b-bastion"
+
+        
+        windowsprivateemulationhostc:
+            Type: AWS::EC2::Instance
+            Properties: 
+                ImageId: ami-032c2c4b952586f02
+                InstanceType: t3.micro
+                KeyName: windowsbastion
+                SecurityGroupIds: 
+                    - sg-0b11bf7dd51138b72
+                SubnetId: subnet-05aa6e1e0d8054668
+                Tags: 
+                    - Key: APP
+                      Value: "emulation"
+                    - Key: Stage
+                      Value: "prd"
+                    - Key: Name
+                      Value: "emulation-private-c-bastion"

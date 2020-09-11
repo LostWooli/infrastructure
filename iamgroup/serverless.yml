@@ -1,0 +1,157 @@
+service:
+  name: '${opt:name}'
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  stage: '${opt:stage,''dev''}'
+  region: ${opt:region,''us-east-1''}
+  stackName: '${opt:name}-CodeCommit-Repo-Groups'
+
+resources:
+  Resources:
+    CodeCommitRepo:
+      Type: AWS::CodeCommit::Repository
+      Properties: 
+        RepositoryName: ${opt:name}
+        Tags: 
+          - Key: Team
+            Value: ${opt:Team}
+
+    GroupLead:
+      Type: AWS::IAM::Group
+      Properties: 
+        GroupName: CodeCommit-${opt:name}-lead-${opt:region}
+        Policies:
+          - PolicyName: CodeCommit-${opt:name}-policy-lead-${opt:region}
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'codecommit:CreateBranch'
+                    - 'codecommit:GetTree'
+                    - 'codecommit:ListPullRequests'
+                    - 'codecommit:GetBlob'
+                    - 'codecommit:GetReferences'
+                    - 'codecommit:CreateCommit'
+                    - 'codecommit:DescribeMergeConflicts'
+                    - 'codecommit:ListTagsForResource'
+                    - 'codecommit:BatchDescribeMergeConflicts'
+                    - 'codecommit:GetCommentsForComparedCommit'
+                    - 'codecommit:GetCommit'
+                    - 'codecommit:GetComment'
+                    - 'codecommit:GetCommitHistory'
+                    - 'codecommit:MergePullRequestByThreeWay'
+                    - 'codecommit:GetCommitsFromMergeBase'
+                    - 'codecommit:DescribePullRequestEvents'
+                    - 'codecommit:CreatePullRequest'
+                    - 'codecommit:GetPullRequest'
+                    - 'codecommit:ListBranches'
+                    - 'codecommit:MergeBranchesBySquash'
+                    - 'codecommit:PostCommentForPullRequest'
+                    - 'codecommit:GetRepositoryTriggers'
+                    - 'codecommit:BatchGetRepositories'
+                    - 'codecommit:GitPull'
+                    - 'codecommit:GetCommentsForPullRequest'
+                    - 'codecommit:CancelUploadArchive'
+                    - 'codecommit:GetObjectIdentifier'
+                    - 'codecommit:GetFolder'
+                    - 'codecommit:BatchGetPullRequests'
+                    - 'codecommit:GetFile'
+                    - 'codecommit:PostCommentReply'
+                    - 'codecommit:MergeBranchesByFastForward'
+                    - 'codecommit:GetUploadArchiveStatus'
+                    - 'codecommit:MergePullRequestBySquash'
+                    - 'codecommit:GetDifferences'
+                    - 'codecommit:GetRepository'
+                    - 'codecommit:MergeBranchesByThreeWay'
+                    - 'codecommit:GetBranch'
+                    - 'codecommit:GetMergeConflicts'
+                    - 'codecommit:GetMergeCommit'
+                    - 'codecommit:MergePullRequestByFastForward'
+                    - 'codecommit:PostCommentForComparedCommit'
+                    - 'codecommit:GitPush'
+                    - 'codecommit:GetMergeOptions'
+                    - 'codecommit:DeleteBranch'
+                  Resource: !GetAtt CodeCommitRepo.Arn
+                - Effect: Allow
+                  Action:
+                    - 'codecommit:ListRepositories'
+                  Resource: '*'
+    GroupDev:
+      Type: AWS::IAM::Group
+      Properties: 
+        GroupName: CodeCommit-${opt:name}-dev-${opt:region}
+        Policies:
+          - PolicyName: CodeCommit-${opt:name}-policy-dev-${opt:region}
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'codecommit:CreateBranch'
+                    - 'codecommit:GetTree'
+                    - 'codecommit:ListPullRequests'
+                    - 'codecommit:GetBlob'
+                    - 'codecommit:GetReferences'
+                    - 'codecommit:CreateCommit'
+                    - 'codecommit:DescribeMergeConflicts'
+                    - 'codecommit:ListTagsForResource'
+                    - 'codecommit:BatchDescribeMergeConflicts'
+                    - 'codecommit:GetCommentsForComparedCommit'
+                    - 'codecommit:GetCommit'
+                    - 'codecommit:GetComment'
+                    - 'codecommit:GetCommitHistory'
+                    - 'codecommit:MergePullRequestByThreeWay'
+                    - 'codecommit:GetCommitsFromMergeBase'
+                    - 'codecommit:DescribePullRequestEvents'
+                    - 'codecommit:CreatePullRequest'
+                    - 'codecommit:GetPullRequest'
+                    - 'codecommit:ListBranches'
+                    - 'codecommit:MergeBranchesBySquash'
+                    - 'codecommit:PostCommentForPullRequest'
+                    - 'codecommit:GetRepositoryTriggers'
+                    - 'codecommit:BatchGetRepositories'
+                    - 'codecommit:GitPull'
+                    - 'codecommit:GetCommentsForPullRequest'
+                    - 'codecommit:CancelUploadArchive'
+                    - 'codecommit:GetObjectIdentifier'
+                    - 'codecommit:GetFolder'
+                    - 'codecommit:BatchGetPullRequests'
+                    - 'codecommit:GetFile'
+                    - 'codecommit:PostCommentReply'
+                    - 'codecommit:MergeBranchesByFastForward'
+                    - 'codecommit:GetUploadArchiveStatus'
+                    - 'codecommit:MergePullRequestBySquash'
+                    - 'codecommit:GetDifferences'
+                    - 'codecommit:GetRepository'
+                    - 'codecommit:MergeBranchesByThreeWay'
+                    - 'codecommit:GetBranch'
+                    - 'codecommit:GetMergeConflicts'
+                    - 'codecommit:GetMergeCommit'
+                    - 'codecommit:MergePullRequestByFastForward'
+                    - 'codecommit:PostCommentForComparedCommit'
+                    - 'codecommit:GitPush'
+                    - 'codecommit:GetMergeOptions'
+                    - 'codecommit:DeleteBranch'
+                  Resource: !GetAtt CodeCommitRepo.Arn
+                - Effect: Allow
+                  Action:
+                    - 'codecommit:ListRepositories'
+                  Resource: '*'
+                - Effect: Deny
+                  Action:
+                    - 'codecommit:GitPush'
+                    - 'codecommit:DeleteBranch'
+                    - 'codecommit:PutFile'
+                    - 'codecommit:MergePullRequestByFastForward'
+                  Resource: !GetAtt CodeCommitRepo.Arn
+                  Condition:
+                    StringEqualsIfExists:
+                      codecommit:References: "refs/heads/master"
+                    'Null':
+                      codecommit:References: 'false'

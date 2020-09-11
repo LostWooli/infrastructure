@@ -1,0 +1,161 @@
+service:
+  name: ${opt:client}
+
+provider:
+
+  deploymentBucket:
+    name: ${opt:accountid}-serverless-deployment-${opt:Region}
+
+  name: aws
+  runtime: nodejs12.x
+  memorySize: 256
+  timeout: 150
+  stage: ${opt:Stage}
+  region: ${opt:Region}
+  stackName: ${opt:client}-${opt:Stage}-cloudwatch-splunk-stream
+
+custom:
+  accountid: ${opt:accountid}
+
+functions:
+   convert:
+      name: cldwtch-kin-trans-${opt:Stage}-${self:custom.accountid}-${opt:client}-${opt:Region}
+      handler: index.handler
+      role: AWSLambdaBasicExecutionRole
+
+
+resources:
+  Resources:
+    AWSLambdaBasicExecutionRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: Lambda-${opt:client}-${opt:Stage}-cloudwatch-splunk-stream-${opt:Region}
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+                  - lambda.eu-west-1.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: LambdaPolicy-${opt:client}-${opt:Stage}-cloudwatch-splunk-stream
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'logs:CreateLogGroup'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                    - 'kinesis:*'
+                  Resource: '*'
+        Tags:
+          - Key: APP
+            Value: devops
+#        - Key: Stage
+#          Value: ${opt:Stage}
+
+    FirehoseDeliveryRoleCloudwatchSplunkS3:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: Firehose-${opt:client}-${opt:Stage}-cloudwatch-splunk-stream-${opt:Region}
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - firehose.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: FirehosePolicy-${opt:client}-${opt:Stage}-cloudwatch-splunk-stream
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 's3:ListBucketMultipartUploads'
+                    - 'kms:Decrypt'
+                    - 'logs:PutLogEvents'
+                    - 'glue:GetTableVersions'
+                    - 'lambda:InvokeFunction'
+                    - 'lambda:GetFunctionConfiguration'
+                    - 'logs:*'
+                    - 's3:ListBucket'
+                    - 'glue:GetTable'
+                    - 's3:PutObject'
+                    - 's3:GetObject'
+                    - 'glue:GetTableVersion'
+                    - 's3:AbortMultipartUpload'
+                    - 's3:GetBucketLocation'
+                    - 'kinesis:*'
+                    - 'sts:*'
+                    - 'firehose:*'
+                  Resource: '*'
+        Tags:
+          - Key: APP
+            Value: devops
+#        - Key: Stage
+#          Value: ${opt:Stage}
+
+      
+
+
+    S3Backup:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.accountid}-${opt:client}-${opt:Stage}-cloudwatch-splunk-${opt:Region}
+        Tags:
+          - Key: APP
+            Value: devops
+          - Key: Stage
+            Value: ${opt:Stage}
+
+
+    KinesisStream:
+      Type: AWS::Kinesis::Stream
+      Properties: 
+        Name: ${opt:client}-${opt:Stage}-kinesis-cloudwatch-splunk-${opt:Region}
+        ShardCount: 1
+        Tags:
+          - Key: APP
+            Value: devops
+          - Key: Stage
+            Value: ${opt:Stage}
+
+    FirehoseDeliveryStream:
+      Type: AWS::KinesisFirehose::DeliveryStream
+      Properties: 
+        DeliveryStreamName: ${opt:client}-${opt:Stage}-kinesis-cloudwatch-splunk-${opt:Region}
+        DeliveryStreamType: KinesisStreamAsSource
+        KinesisStreamSourceConfiguration: 
+            KinesisStreamARN: !GetAtt KinesisStream.Arn
+            RoleARN: !GetAtt FirehoseDeliveryRoleCloudwatchSplunkS3.Arn
+        SplunkDestinationConfiguration: 
+            HECAcknowledgmentTimeoutInSeconds: 180
+            HECEndpoint: https://splunk-hec.chargebacks911.com
+            HECEndpointType: Raw
+            HECToken: "${opt:HECToken}"
+            ProcessingConfiguration: 
+              Enabled: true
+              Processors: 
+                - Parameters:
+                    - ParameterName: LambdaArn
+                      ParameterValue: arn:aws:lambda:${opt:Region}:${self:custom.accountid}:function:cldwtch-kin-trans-${opt:Stage}-${self:custom.accountid}-${opt:client}-${opt:Region}
+                    - ParameterName: RoleArn
+                      ParameterValue: !GetAtt AWSLambdaBasicExecutionRole.Arn
+                  Type: Lambda
+            RetryOptions: 
+              DurationInSeconds: 5
+            S3BackupMode: FailedEventsOnly
+            S3Configuration: 
+              BucketARN: !GetAtt S3Backup.Arn
+              BufferingHints: 
+                IntervalInSeconds: 60
+                SizeInMBs: 1
+              CompressionFormat: GZIP
+              RoleARN: !GetAtt FirehoseDeliveryRoleCloudwatchSplunkS3.Arn

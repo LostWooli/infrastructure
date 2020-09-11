@@ -1,0 +1,87 @@
+service:
+
+  name: sftp-transfer-server
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  stage: ${opt:Stage,''dev''}
+  region: ${opt:Region,''us-east-1''}
+  stackName: sftp-transfer-public-${opt:Stage}
+  stackTags:
+    owner: ${opt:Owner, ''Nobody''}
+
+custom:
+
+  stages:
+    - sales
+    - dev
+    - dev-demo
+    - uat
+    - qa
+    - sbx
+    - mig
+    - pa1
+    - prd
+    - sbx
+    - demo
+    - dev-mumbai
+    - prd-mumbai
+  StackName: sftp-transfer-public-${opt:Stage}
+resources:
+  Resources:
+
+    SftpIamRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: ${self:custom.StackName}-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - transfer.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: ${self:custom.StackName}-s3-policy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - s3:ListAllMyBuckets
+                    - s3:GetBucketLocation
+                    - s3:ListBucket
+                    - s3:PutObject
+                    - s3:GetObject
+                    - s3:GetObjectVersion
+                    - s3:DeleteObject
+                    - s3:DeleteObjectVersion
+                  Resource: '*'
+        Tags:
+          - Key: APP
+            Value: sftp-transfer
+
+    SftpServer:
+      Type: AWS::Transfer::Server
+      Properties:
+        EndpointType: PUBLIC
+        IdentityProviderType: SERVICE_MANAGED
+        LoggingRole: !GetAtt SftpIamRole.Arn
+        Tags:
+          - Key: APP
+            Value: sftp-transfer
+          - Key: AWS_REGION
+            Value: ${opt:Region}
+          - Key: Stage
+            Value: ${opt:Stage}
+  Outputs:
+
+    SftpServerId:
+      Value: !GetAtt SftpServer.ServerId
+

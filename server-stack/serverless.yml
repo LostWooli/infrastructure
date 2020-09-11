@@ -1,0 +1,828 @@
+service:
+
+  name: ${opt:App}
+
+provider:
+
+  deploymentBucket:
+    name: ${opt:accountid}-serverless-deployment
+
+  name: aws
+  stage: ${opt:Stage,''dev''}
+  region: ${opt:Region,''us-east-1''}
+  stackName: ${opt:App}-${opt:Stage}
+  stackTags:
+    owner: ${opt:Owner, ''Nobody''}
+  AutoScaleInstances: ${opt:AutoScaleInstances}
+
+custom:
+  health: ${opt:health, '/health-check'}
+  proto: ${opt:proto, 'HTTP'}
+  port: ${opt:port, '80'}
+  stages:
+    - sales
+    - dev
+    - dev-demo
+    - uat
+    - qa
+    - sbx
+    - mig
+    - pa1
+    - prd
+    - sbx
+    - demo
+    - cron
+
+  DeployLambdaFunction: arn:aws:lambda:us-east-1:${opt:accountid}:function:AutoSacaleTriggerManager
+  ElasticSearchInstanceType: ${opt:ElasticSearchInstanceType,'none'}
+  LoadBalancerScheme: internet-facing
+  MutualAuthStack: ${opt:MutualAuthStack,''none''}
+  PostgresInstanceType: ${opt:PostgresInstanceType,''none''}
+  RdsInstanceType: ${opt:RdsInstanceType,''none''}
+  RdsSnapshotIdentifier: ${opt:RdsSnapshotIdentifier,'none'}
+  RdsSnapshotVersion: ${opt:RdsSnapshotVersion,'1'}
+  RedisInstanceType: ${opt:RedisInstanceType,''none''}
+  SplunkVersion: splunkforwarder-7.3.0-657388c7a488-Linux-x86_64.tgz
+  StackName: ${opt:App}-${opt:Stage}
+  StackUrl: ${opt:StackUrl}
+
+resources:
+
+  Conditions:
+    IsNotProdOrDemo: !Not [!Or [!Equals [ '${opt:Stage}', prd ], !Equals [ '${opt:Stage}', demo ] ]]
+    IsProdOrDemo: !Or [!Equals [ '${opt:Stage}', prd ], !Equals [ '${opt:Stage}', demo ] ]
+    HasElasticSearch: !Not [ !Equals [ '${self:custom.ElasticSearchInstanceType}', none ] ]
+    HasPostgresRds: !Not [ !Equals [ '${self:custom.PostgresInstanceType}', none ] ]
+    HasSeparateRds: !Not [ !Equals [ '${self:custom.RdsInstanceType}', none ] ]
+    HasSeparateRedis: !Not [ !Equals [ '${self:custom.RedisInstanceType}', none ] ]
+    HasSnapshotIdentifier: !Not [ !Equals [ '${self:custom.RdsSnapshotIdentifier}', 'none' ] ]
+    HasMutualAuth: !Equals [ '${opt:App}', 'cbapiv2' ]
+    NoMutualAuth: !Not [ !Equals [ '${opt:App}', 'cbapiv2' ] ]
+
+  Mappings:
+
+    Cidrs:
+      #main-prd-vpc
+      vpc-06d9599bc403469f9:
+        Cidr: 10.193.0.0/16
+
+      #main-dev-vpc
+      vpc-0bb6c7d7d3ac936d4:
+        Cidr: 10.192.0.0/16
+
+
+    Environments:
+      prd:
+        Environment: prod
+      sales:
+        Environment: dev
+      dev:
+        Environment: dev
+      dev-demo:
+        Environment: dev
+      demo:
+        Environment: dev
+      uat:
+        Environment: dev
+      qa:
+        Environment: dev
+      sbx:
+        Environment: dev
+      cron:
+        Environment: prod
+
+    Subnets:
+      #main-prd-vpc
+      vpc-06d9599bc403469f9:
+        private: subnet-0520f936a41312456,subnet-0223b98b7f2abb744,subnet-0c352db2a19e5b440
+        privateNat: subnet-0a285cea25c5576a7,subnet-0881bfbac3d908d2a,subnet-05aa6e1e0d8054668
+        public: subnet-08ba85285cc61f3bc,subnet-0f0978328a8925c71,subnet-0e54caa00266e93d5
+
+      #main-dev-vpc
+      vpc-0bb6c7d7d3ac936d4:
+        private: subnet-0c34414bca0569883,subnet-06a5cbc0a5b538229,subnet-0f19d11e10a5d0aed
+        privateNat: subnet-0742cdf24e8ef1f17,subnet-03147e63245e28f94,subnet-0677ffeecfbaaaa66
+        public: subnet-0541716ffb462e081,subnet-0448f55ac95ec7789,subnet-042eb1a5009dd959a
+
+
+    VpcIds:
+      prd:
+        #main-prd-vpc
+        VpcId: vpc-06d9599bc403469f9
+      dev:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      demo:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      sales:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      dev-demo:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      qa:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      sbx:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      uat:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      cron:
+        #main-prd-vpc
+        VpcId: vpc-06d9599bc403469f9
+
+  Resources:
+
+    AppDeploymentGroup:
+      Type: AWS::CodeDeploy::DeploymentGroup
+      Condition: NoMutualAuth
+      Properties:
+        ApplicationName: ${opt:App}
+        AutoRollbackConfiguration:
+          Enabled: false
+          Events:
+            - DEPLOYMENT_FAILURE
+            - DEPLOYMENT_STOP_ON_ALARM
+            - DEPLOYMENT_STOP_ON_REQUEST
+        AutoScalingGroups:
+          - !Ref AutoScalingGroup
+        DeploymentConfigName: CodeDeployDefault.OneAtATime
+        DeploymentGroupName: ${opt:Stage}
+        DeploymentStyle:
+          DeploymentOption: WITHOUT_TRAFFIC_CONTROL
+          DeploymentType: IN_PLACE
+        Ec2TagFilters:
+            - Key: Name
+              Value: ${opt:App}-${opt:Stage}-web
+              Type: KEY_AND_VALUE
+            - Key: Name
+              Value: ${opt:App}-${opt:Stage}-web-ma
+              Type: KEY_AND_VALUE
+        ServiceRoleArn: 'arn:aws:iam::${opt:AccountId}:role/CodeDeploy'
+        TriggerConfigurations:
+          - TriggerName: ${opt:App}-${opt:Stage}-app-deployment-trigger-1
+            TriggerTargetArn: !Ref AppDeploymentGroupTriggerSnsTopic
+            TriggerEvents:
+              - DeploymentFailure
+
+    AppDeploymentGroupTriggerSnsTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: ${opt:App}-${opt:Stage}-deployment-notification-topic
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+        TopicName: ${opt:App}-${opt:Stage}-deployment-notification-topic
+      DependsOn:
+        - SqsAutoScaleNotify
+
+    AppDeploymentGroupTriggerSubscription:
+      Condition: IsProdOrDemo
+      Type: AWS::SNS::Subscription
+      Properties:
+        Endpoint: arn:aws:sqs:us-east-1:492239587024:codedeploy-to-splunk
+        Protocol: sqs
+        TopicArn: !Ref AppDeploymentGroupTriggerSnsTopic
+
+    ServicesHttpSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Only allow inbound HTTP(s) Connections from the VPC
+        GroupName: ${opt:App}-${opt:Stage}-http-security-group
+        SecurityGroupIngress:
+          - CidrIp: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+            FromPort: 80
+            ToPort: 80
+            IpProtocol: tcp
+          - CidrIp: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+            FromPort: 443
+            ToPort: 443
+            IpProtocol: tcp
+          - CidrIp: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+            FromPort: 9001
+            ToPort: 9001
+            IpProtocol: tcp
+          - CidrIp: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+            FromPort: ${self:custom.port}
+            ToPort: ${self:custom.port}
+            IpProtocol: tcp
+        VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+
+    ServicesSshSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: Only allow inbound SSH Connections from the VPC
+        GroupName: ${opt:App}-${opt:Stage}-ssh-security-group
+        SecurityGroupIngress:
+          - CidrIp: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+            FromPort: 22
+            ToPort: 22
+            IpProtocol: tcp
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+          - Key: Team
+            Value: ${opt:Team}
+        VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+
+    Ec2IamRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: EC2-${self:custom.StackName}
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - ec2.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: EC2Policy-${self:custom.StackName}
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'apigateway:POST'
+                    - 'apigateway:GET'
+                    - 'execute-api:Invoke'
+                    - 'ssm:UpdateInstanceAssociationStatus'
+                    - 'ssm:GetDocument'
+                    - 'ssm:DescribeDocument'
+                    - 'ssm:GetManifest'
+                    - 'ssm:ListAssociations'
+                    - 'ssm:ListInstanceAssociations'
+                    - 'ssm:PutInventory'
+                    - 'ssm:PutComplianceItems'
+                    - 'ssm:PutConfigurePackageResult'
+                    - 'ssm:UpdateAssociationStatus'
+                    - 'ssm:UpdateInstanceInformation'
+                    - 'ec2messages:GetMessages'
+                    - 'ec2messages:AcknowledgeMessage'
+                    - 'ec2messages:DeleteMessage'
+                    - 'ec2messages:FailMessage'
+                    - 'ec2messages:GetEndpoint'
+                    - 'ec2messages:SendReply'
+                    - 'ec2:DescribeSecurityGroups'
+                    - 'ssmmessages:CreateControlChannel'
+                    - 'ssmmessages:CreateDataChannel'
+                    - 'ssmmessages:OpenControlChannel'
+                    - 'ssmmessages:OpenDataChannel'
+                    - 'ssm:DescribeAssociation'
+                    - 'ssm:GetDeployablePatchSnapshotForInstance'
+                    - 'cloudwatch:*'
+                    - 'codedeploy:*'
+                    - 'codecommit:*'
+                    - 'lambda:*'
+                    - 's3:*'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'cloudformation:DescribeStacks'
+                    - 'cloudformation:ListChangeSets'
+                    - 'ec2:DescribeTags'
+                    - 'logs:CreateLogGroup'
+                    - 'logs:CreateLogStream'
+                    - 'logs:PutLogEvents'
+                    - 'logs:DescribeLogGroups'
+                    - 'logs:DescribeLogStreams'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'sns:ListTagsForResource'
+                    - 'sns:TagResource'
+                    - 'sns:ListSubscriptionsByTopic'
+                    - 'sns:Publish'
+                    - 'sns:GetTopicAttributes'
+                    - 'sns:Subscribe'
+                    - 'sns:UntagResource'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'sqs:TagQueue'
+                    - 'sqs:GetQueueUrl'
+                    - 'sqs:ListDeadLetterSourceQueues'
+                    - 'sqs:SendMessageBatch'
+                    - 'sqs:UntagQueue'
+                    - 'sqs:ReceiveMessage'
+                    - 'sqs:SendMessage'
+                    - 'sqs:GetQueueAttributes'
+                    - 'sqs:ListQueueTags'
+                    - 'sqs:DeleteMessage'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'sqs:ListQueues'
+                  Resource: '*'
+                - Effect: Allow
+                  Action:
+                    - 'ssm:GetParameter'
+                    - 'ssm:GetParameters'
+                    - 'ssm:GetParametersByPath'
+                  Resource:
+                    - 'arn:aws:ssm:*:*:parameter/${opt:Stage}/${opt:App}/*'
+                    - 'arn:aws:ssm:*:*:parameter/${opt:App}/${opt:Stage}/*'
+                    - 'arn:aws:ssm:*:*:parameter/common/${opt:Stage}/*'
+                - Effect: Allow
+                  Action:
+                    - 'secretsmanager:GetSecretValue'
+                  Resource: 
+                    - 'arn:aws:secretsmanager:*:*:secret:github*'
+                    - 'arn:aws:secretsmanager:*:*:secret:/${opt:App}/${opt:Stage}*'
+                    - 'arn:aws:secretsmanager:*:*:secret:/${opt:Stage}/${opt:App}*'
+                    - 'arn:aws:secretsmanager:*:*:secret:knownhosts*' 
+                    - 'arn:aws:secretsmanager:*:*:secret:cbk-builds-ers-*'
+                    - 'arn:aws:secretsmanager:*:*:secret:cbk-builds-ers2-*'
+                    - 'arn:aws:secretsmanager:*:*:secret:/prd/sgchanger-*'
+                    - 'arn:aws:secretsmanager:*:*:secret:userlist-*'
+                    - 'arn:aws:secretsmanager:*:*:secret:/userlist-*'
+                    - 'arn:aws:secretsmanager:*:*:secret:sgchanger-*'
+                    
+                - Effect: Allow
+                  Action:
+                    - 'ssm:GetParameter'
+                    - 'ssm:GetParametersByPath'
+                  Resource: 'arn:aws:ssm:*:*:parameter/devops/secrets/jcapi'
+                - Effect: Allow
+                  Action:
+                    - 'route53:GetHostedZone'
+                    - 'route53:ChangeResourceRecordSets'
+                    - 'route53:ListResourceRecordSets'
+                  Resource: 'arn:aws:route53:::hostedzone/Z2KG79DHFBAE9S'
+                - Effect: Deny
+                  Action:
+                    - 'lambda:AddPermission'
+                    - 'lambda:CreateFunction'
+                    - 'lambda:DeleteFunction'
+                  Resource: '*'
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+#          - Key: Stage
+#            Value: ${opt:Stage}
+          - Key: Team
+            Value: ${opt:Team}
+
+    SqsAutoScaleNotify:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${opt:App}-${opt:Stage}-web-sqs-autoscale-notify-${opt:Version}
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+
+    SqsAutoScalePolicy:  
+      Type: AWS::SQS::QueuePolicy
+      Properties: 
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Sid: Allow-sns-SendMessage
+            Effect: Allow
+            Principal:
+              AWS: "*"
+            Action:
+            - sqs:*
+            Resource: "*"
+        Queues: 
+          - !Ref SqsAutoScaleNotify
+
+    SnsAutoScaleNotify:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: ${opt:App}-${opt:Stage}-web-sns-autoscale-notify
+        Subscription:
+        - Endpoint: !GetAtt SqsAutoScaleNotify.Arn
+          Protocol: sqs
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+        TopicName: ${opt:App}-${opt:Stage}-web-sns-autoscale-notify
+      DependsOn:
+        - SqsAutoScaleNotify
+
+    LambdaInvokePermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName: ${self:custom.DeployLambdaFunction}
+        Principal: sqs.amazonaws.com
+        SourceArn: !GetAtt SqsAutoScaleNotify.Arn
+      DependsOn:
+        - SqsAutoScaleNotify
+
+    IamInstanceProfile:
+      Type: AWS::IAM::InstanceProfile
+      Properties:
+        Roles:
+          - !Ref Ec2IamRole
+        InstanceProfileName: ${opt:App}-${opt:Stage}-web-instance-profile
+
+    LaunchConfiguration:
+      Type: AWS::AutoScaling::LaunchConfiguration
+      Properties:
+        AssociatePublicIpAddress: false
+        IamInstanceProfile: !Ref IamInstanceProfile
+        ImageId: ${opt:AmiId}
+        InstanceMonitoring: true
+        InstanceType: ${opt:WebEc2InstanceType}
+        KeyName: devops
+        BlockDeviceMappings:
+          - DeviceName: "/dev/sda1"
+            Ebs:
+                DeleteOnTermination: true
+                VolumeSize: 50
+                VolumeType: "gp2"
+          - DeviceName: "/dev/sdb"
+            Ebs:
+                DeleteOnTermination: true
+                VolumeSize: 50
+                VolumeType: "gp2"
+          - DeviceName: "/dev/sdc"
+            Ebs:
+                DeleteOnTermination: true
+                VolumeSize: 50
+                VolumeType: "gp2"
+          - DeviceName: "/dev/sdd"
+            Ebs:
+                DeleteOnTermination: true
+                VolumeSize: 50
+                VolumeType: "gp2"
+          - DeviceName: "/dev/sde"
+            Ebs:
+                DeleteOnTermination: true
+                VolumeSize: 10
+                VolumeType: "gp2"
+          - DeviceName: "/dev/sdf"
+            Ebs:
+                DeleteOnTermination: true
+                VolumeSize: 10
+                VolumeType: "gp2"
+        LaunchConfigurationName: ${opt:App}-${opt:Stage}-${opt:Version}-web-launch-configuration
+        SecurityGroups:
+          - !Ref ServicesHttpSecurityGroup
+          - !Ref ServicesSshSecurityGroup
+        UserData: "IyEvYmluL2Jhc2gKZXhlYyAzPiYxIDQ+JjIKdHJhcCAnZXhlYyAyPiY0IDE+JjMnIDAgMSAyIDMKZXhlYyAxPi92YXIvbG9nLzAtb3JkZXIubG9nIDI+JjEKIyBDcmVhdGUgQnVpbGRlciBVc2VyCnVzZXJhZGQgLW0gLWQgL2hvbWUvYnVpbGRlciBidWlsZGVyIC1zIC9iaW4vYmFzaApta2RpciAvaG9tZS9idWlsZGVyLy5zc2gKZWNobyAiYnVpbGRlciBBTEw9KEFMTCkgTk9QQVNTV0Q6QUxMIiA+PiAvZXRjL3N1ZG9lcnMKIyBDcmVhdGUgU3BsdW5rIFVzZXIKdXNlcmFkZCAtbSAtZCAvaG9tZS9zcGx1bmsgc3BsdW5rIC1zIC9iaW4vYmFzaAojIEluc3RhbGwgZGVmYXVsdCBhcHBsaWNhdGlvbnMKZXhwb3J0IERFQklBTl9GUk9OVEVORD1ub25pbnRlcmFjdGl2ZQphcHQtZ2V0IHVwZGF0ZSAteQphcHQtZ2V0IC15IC1vIERwa2c6Ok9wdGlvbnM6Oj0iLS1mb3JjZS1jb25mZGVmIiAtbyBEcGtnOjpPcHRpb25zOjo9Ii0tZm9yY2UtY29uZm9sZCIgdXBncmFkZQphcHQgaW5zdGFsbCBweXRob24zLXBpcCAteQphcHQgaW5zdGFsbCBqcSAteQphcHQgaW5zdGFsbCBteWNsaSAteQphcHQgaW5zdGFsbCBydWJ5IC15CnBpcDMgaW5zdGFsbCBhd3NjbGkgLXEKcGlwMyBpbnN0YWxsIGJvdG8zIC1xCiMgR2V0IFNTSCBHSVQgcHJpdmF0ZSBrZXkgYW5kIGtub3duX2hvc3RzIGNvbmZpZwpyZWdpb249YGN1cmwgMTY5LjI1NC4xNjkuMjU0L2xhdGVzdC9tZXRhLWRhdGEvcGxhY2VtZW50L2F2YWlsYWJpbGl0eS16b25lfCByZXYgfCBjdXQgLWMgMi0gfCByZXZgCmF3cyBjb25maWd1cmUgc2V0IGRlZmF1bHQucmVnaW9uICRyZWdpb24KZW5jb2RlZF9zc2hfa2V5PWBhd3Mgc2VjcmV0c21hbmFnZXIgZ2V0LXNlY3JldC12YWx1ZSAtLXNlY3JldC1pZCBnaXRodWIgLS1vdXRwdXQganNvbiB8IGpxICcuU2VjcmV0U3RyaW5nJyB8IGN1dCAtZCAiOiIgLWYgMiB8IGN1dCAtZCAnIicgLWYgMiB8IGN1dCAtZCAnXCcgLWYgMWAKc3NoX2tleT1gZWNobyAkZW5jb2RlZF9zc2hfa2V5IHwgYmFzZTY0IC0tZGVjb2RlYAplbmNvZGVkX2tub3duX2hvc3RzPWBhd3Mgc2VjcmV0c21hbmFnZXIgZ2V0LXNlY3JldC12YWx1ZSAtLXNlY3JldC1pZCBrbm93bmhvc3RzIC0tb3V0cHV0IGpzb24gfCBqcSAnLlNlY3JldFN0cmluZycgfCBjdXQgLWQgIjoiIC1mIDIgfCBjdXQgLWQgJyInIC1mIDIgfCBjdXQgLWQgJ1wnIC1mIDFgCmtub3duX2hvc3RzPWBlY2hvICRlbmNvZGVkX2tub3duX2hvc3RzIHwgYmFzZTY0IC0tZGVjb2RlYApjYXQgPiAvaG9tZS9idWlsZGVyLy5zc2gvaWRfcnNhIDw8IEVPRgokc3NoX2tleQpFT0YKY2F0ID4gL2hvbWUvYnVpbGRlci8uc3NoL2tub3duX2hvc3RzIDw8IEVPRgoka25vd25faG9zdHMKRU9GCiMgQ2hhbmdlIHBlcm1pc3Npb24gZm9yIGtleXMKY2htb2QgNzAwIC9ob21lL2J1aWxkZXIvLnNzaApjaG1vZCA2MDAgL2hvbWUvYnVpbGRlci8uc3NoL2lkX3JzYQpjaG1vZCA2NjAgL2hvbWUvYnVpbGRlci8uc3NoL2tub3duX2hvc3RzCmNob3duIC1SIGJ1aWxkZXI6YnVpbGRlciAvaG9tZS9idWlsZGVyCiMgRmV0Y2ggcHJlYnVpbGQgc2NyaXB0cyBmcm9tIGdpdGh1YgpQUkVCVUlMRD0vdmFyL3ByZWJ1aWxkCm1rZGlyICRQUkVCVUlMRApjaG1vZCA3NzcgJFBSRUJVSUxECmNkICRQUkVCVUlMRApzdWRvIC11IGJ1aWxkZXIgc2ggLWMgJ2dpdCBjbG9uZSBnaXRAZ2l0aHViLmNvbTpHVE1DL3ByZWRlcGxveW1lbnRzY3JpcHRzLmdpdCcKIyBjZCAkUFJFQlVJTEQvcHJlZGVwbG95bWVudHNjcmlwdHMKIyBzdWRvIC11IGJ1aWxkZXIgc2ggLWMgJ2dpdCBjaGVja291dCBkZXZ0ZXN0JwpjaG1vZCAtUiAreCAkUFJFQlVJTEQvcHJlZGVwbG95bWVudHNjcmlwdHMvKi5zaAojIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMKIyBJbnZva2Ugc2NyaXB0IHNlcXVlbnNlCiMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyAKIyBTdGVwMSBQYXJ0aXRpb24gY29uZmlndXJlCnB5dGhvbjMgJFBSRUJVSUxEL3ByZWRlcGxveW1lbnRzY3JpcHRzLzFfYXV0b3BhcnQucHkKIyBTdGVwMiBTeXN0ZW0gY29uZmlndXJhdGlvbgovJFBSRUJVSUxEL3ByZWRlcGxveW1lbnRzY3JpcHRzLzJfc3lzY29uZmlnLnNoCiMgU3RlcDMgU2VjdXJpdHkgY29uZmlndXJhdGlvbgpzaCAkUFJFQlVJTEQvcHJlZGVwbG95bWVudHNjcmlwdHMvM19zZWN1cml0eS5zaAojIFN0ZXA0IE9uYm9vdApzdWRvICRQUkVCVUlMRC9wcmVkZXBsb3ltZW50c2NyaXB0cy80X29uYm9vdC5zaAojIFN0ZXAgNQojIFN0ZXAgNiBUYWdnaW5nIEVCUyBWb2x1bWVzCnN1ZG8gJFBSRUJVSUxEL3ByZWRlcGxveW1lbnRzY3JpcHRzLzZfZWJzdGFnZ2luZy5zaAojIFN0ZXAgNyBVc2VyIENyZWF0aW9uIHNjcmlwdApta2RpciAvb3B0L3Nlc3Npb25oYW5kbGVyCmNwICRQUkVCVUlMRC9wcmVkZXBsb3ltZW50c2NyaXB0cy9zZXNzaW9uX2hhbmRsZXIucHkgL29wdC9zZXNzaW9uaGFuZGxlci8KY2F0ID4gL2V0Yy9zeXN0ZW1kL3N5c3RlbS9zZXNzaW9uX2hhbmRsZXIuc2VydmljZSA8PCBFT0YKW1VuaXRdCkRlc2NyaXB0aW9uPXNlc3Npb25faGFuZGxlcgpbU2VydmljZV0KVHlwZT1zaW1wbGUKVXNlcj1yb290CkV4ZWNTdGFydD0vdXNyL2Jpbi9weXRob24zIC9vcHQvc2Vzc2lvbmhhbmRsZXIvc2Vzc2lvbl9oYW5kbGVyLnB5CldvcmtpbmdEaXJlY3Rvcnk9L29wdC9zZXNzaW9uaGFuZGxlci8KUmVzdGFydD1hbHdheXMKUmVzdGFydFNlYz0yCltJbnN0YWxsXQpXYW50ZWRCeT1tdWx0aS11c2VyLnRhcmdldApFT0YKc3lzdGVtY3RsIGRhZW1vbi1yZWxvYWQKc3lzdGVtY3RsIGVuYWJsZSBzZXNzaW9uX2hhbmRsZXIuc2VydmljZQpzeXN0ZW1jdGwgc3RhcnQgc2Vzc2lvbl9oYW5kbGVyLnNlcnZpY2U="
+      DependsOn:
+        - IamInstanceProfile
+
+    ExternalLoadBalancerSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties:
+        GroupDescription: 'Allow inbound HTTP/HTTPS Connections'
+        GroupName: ${opt:App}-${opt:Stage}-web-external-security-group
+        SecurityGroupIngress:
+          - CidrIp: '0.0.0.0/0'
+            FromPort: 80
+            ToPort: 80
+            IpProtocol: tcp
+          - CidrIp: '0.0.0.0/0'
+            FromPort: 443
+            ToPort: 443
+            IpProtocol: tcp
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+        VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+
+    LoadBalancer:
+      Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+      Properties:
+        IpAddressType: ipv4
+        LoadBalancerAttributes:
+          - Key: routing.http2.enabled
+            Value: true
+          - Key: idle_timeout.timeout_seconds
+            Value: 300
+        Name: ${opt:App}-${opt:Stage}-web-lb
+        Scheme: ${self:custom.LoadBalancerScheme}
+        SecurityGroups:
+          - !Ref ServicesHttpSecurityGroup
+          - !Ref ExternalLoadBalancerSecurityGroup
+        Subnets: !Split [ ',', !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], public ] ]
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+          - Key: Team
+            Value: ${opt:Team}
+
+    TargetGroup:
+      Type: AWS::ElasticLoadBalancingV2::TargetGroup
+      Properties:
+        HealthCheckIntervalSeconds: 15
+        HealthCheckPath: ${self:custom.health}
+        HealthCheckPort: ${self:custom.port}
+        HealthCheckProtocol: ${self:custom.proto}
+        HealthCheckTimeoutSeconds: 10
+        HealthyThresholdCount: 2
+        Name: ${opt:App}-${opt:Stage}-web-tg-${opt:Version}
+        Port: ${self:custom.port}
+        Protocol: ${self:custom.proto}
+        UnhealthyThresholdCount: 2
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+          - Key: Team
+            Value: ${opt:Team}
+        TargetGroupAttributes:
+          - Key: deregistration_delay.timeout_seconds
+            Value: 10
+          - Key: stickiness.enabled
+            Value: true
+          - Key: stickiness.lb_cookie.duration_seconds
+            Value: 3600
+        VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+      DependsOn:
+        - LoadBalancer
+
+    AutoScalingGroup:
+      Type: AWS::AutoScaling::AutoScalingGroup
+      Properties:
+        AutoScalingGroupName: ${opt:App}-${opt:Stage}-${opt:Version}-web-auto-scaling-group
+        Cooldown: 30
+        DesiredCapacity: ${opt:AutoScaleInstances}
+        HealthCheckGracePeriod: 0
+        HealthCheckType: EC2
+        LaunchConfigurationName: !Ref LaunchConfiguration
+        MaxSize: 2
+        MinSize: 1
+        NotificationConfigurations:
+          - TopicARN:
+              Ref: SnsAutoScaleNotify
+            NotificationTypes:
+              - autoscaling:EC2_INSTANCE_LAUNCH
+        Tags:
+          - Key: AWS_REGION
+            Value: ${opt:Region}
+            PropagateAtLaunch: true
+          - Key: APP
+            Value: ${opt:App}
+            PropagateAtLaunch: true
+          - Key: Environment
+            Value: !FindInMap [ Environments, '${opt:Stage}', Environment ]
+            PropagateAtLaunch: true
+          - Key: Name
+            Value: ${opt:App}-${opt:Stage}-web
+            PropagateAtLaunch: true
+          - Key: SplunkVersion
+            Value: ${self:custom.SplunkVersion}
+            PropagateAtLaunch: true
+          - Key: Stage
+            Value: ${opt:Stage}
+            PropagateAtLaunch: true
+          - Key: Team
+            Value: ${opt:Team}
+            PropagateAtLaunch: true
+          - Key: PHPVER
+            Value: ${opt:PhpVersion}
+            PropagateAtLaunch: true
+          - Key: ${self:custom.StackName}
+            Value: true
+            PropagateAtLaunch: true
+        TargetGroupARNs:
+          - !Ref TargetGroup
+        TerminationPolicies:
+          - OldestInstance
+        VPCZoneIdentifier: !Split [ ',', !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], privateNat ] ]
+      DependsOn:
+        - LaunchConfiguration
+        - TargetGroup
+
+    AWSAutoScalingScheduledActionOff:
+      Condition: IsNotProdOrDemo
+      Type: AWS::AutoScaling::ScheduledAction
+      Properties:
+        AutoScalingGroupName: !Ref AutoScalingGroup
+        DesiredCapacity: 0
+        MaxSize: 0
+        MinSize: 0
+        Recurrence: "59 23 * * 1-5" #This is UTC Time which should translate to 7PM for US-EAST
+      DependsOn:
+        - AutoScalingGroup
+
+    AWSAutoScalingLifecycleHookOn:
+      Condition: IsNotProdOrDemo
+      Type: AWS::AutoScaling::ScheduledAction
+      Properties:
+        AutoScalingGroupName: !Ref AutoScalingGroup
+        DesiredCapacity: 1
+        MaxSize: 1
+        MinSize: 1
+        Recurrence: "0 11 * * 1-5" #This is UTC Time which should translate to 6AM for US-EAST
+      DependsOn:
+        - AutoScalingGroup
+
+    LoadBalancerHttpsListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        Certificates:
+          - CertificateArn: ${opt:CertificateArn}
+        DefaultActions:
+          - TargetGroupArn: !Ref TargetGroup
+            Type: forward
+        LoadBalancerArn: !Ref LoadBalancer
+        Port: 443
+        Protocol: HTTPS
+        SslPolicy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
+      DependsOn:
+        - LoadBalancer
+        - TargetGroup
+
+    LoadBalancerHttpListener:
+      Type: AWS::ElasticLoadBalancingV2::Listener
+      Properties:
+        DefaultActions:
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              StatusCode: HTTP_301
+              Port: 443
+        LoadBalancerArn: !Ref LoadBalancer
+        Port: 80
+        Protocol: HTTP
+      DependsOn:
+        - LoadBalancer
+        - TargetGroup
+
+    ApplicationSecret:
+      Type: AWS::SecretsManager::Secret
+      Properties:
+        Description: String
+        Name: '/${opt:App}/${opt:Stage}/application-secret'
+        SecretString:
+          '{}'
+        Tags:
+          - Key: APP
+            Value: ${opt:App}
+          - Key: Stage
+            Value: ${opt:Stage}
+          - Key: Team
+            Value: ${opt:Team}
+
+    DatabaseClusterStack:
+      Type: AWS::CloudFormation::Stack
+      Condition: HasSeparateRds
+      Properties:
+        Parameters:
+          DatabaseSubnetA: !Select [ 0, !Split [ ',', !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], private ] ] ]
+          DatabaseSubnetB: !Select [ 1, !Split [ ',', !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], private ] ] ]
+          RdsInstanceType: ${self:custom.RdsInstanceType}
+          ServiceName: ${opt:App}
+          SnapshotIdentifier: ${self:custom.RdsSnapshotIdentifier}
+          Stage: ${opt:Stage}
+          Team: ${opt:Team}
+          Version: !If [ HasSnapshotIdentifier, '${self:custom.RdsSnapshotVersion}', 1 ]
+          VpcCidrBlock: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+          VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+        TemplateURL: ${self:custom.StackUrl}rds-cluster.yml
+
+    ElasticSearchStack:
+      Type: AWS::CloudFormation::Stack
+      Condition: HasElasticSearch
+      Properties:
+        Parameters:
+          ElasticSearchInstanceType: ${self:custom.ElasticSearchInstanceType}
+          ServiceName: ${opt:App}
+          Stage: ${opt:Stage}
+          SubnetGroupList: !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], private ]
+          Team: ${opt:Team}
+          VpcCidrBlock: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+          VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+        TemplateURL: ${self:custom.StackUrl}elasticsearch.yml
+
+    PostgresClusterStack:
+      Type: AWS::CloudFormation::Stack
+      Condition: HasPostgresRds
+      Properties:
+        Parameters:
+          DatabaseSubnetA: !Select [ 0, !Split [ ',', !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], private ] ] ]
+          DatabaseSubnetB: !Select [ 1, !Split [ ',', !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], private ] ] ]
+          RdsInstanceType: ${self:custom.PostgresInstanceType}
+          ServiceName: ${opt:App}
+          SnapshotIdentifier: ${self:custom.RdsSnapshotIdentifier}
+          Stage: ${opt:Stage}
+          Team: ${opt:Team}
+          Version: !If [ HasSnapshotIdentifier, '${self:custom.RdsSnapshotVersion}', 1 ]
+          VpcCidrBlock: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+          VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+        TemplateURL: ${self:custom.StackUrl}rds/postgres-cluster.yml
+
+    RedisClusterStack:
+      Type: AWS::CloudFormation::Stack
+      Condition: HasSeparateRedis
+      Properties:
+        Parameters:
+          CacheNodeType: ${self:custom.RedisInstanceType}
+          ServiceName: ${opt:App}
+          Stage: ${opt:Stage}
+          SubnetGroupList: !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], privateNat ]
+          Team: ${opt:Team}
+          VpcCidrBlock: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+          VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+        TemplateURL: ${self:custom.StackUrl}redis-cache.yml
+
+    TeamPolicyStack:
+      Type: AWS::CloudFormation::Stack
+      Properties:
+        Parameters:
+          ServiceName: ${opt:App}
+          StackName: ${self:custom.StackName}
+          Stage: ${opt:Stage}
+          Team: ${opt:Team}
+        TemplateURL: ${self:custom.StackUrl}team-policies.yml
+
+    MutualAuthStack:
+      Type: AWS::CloudFormation::Stack
+      Condition: HasMutualAuth
+      Properties:
+        Parameters:
+          App: ${opt:App}
+          AmiId: ${opt:AmiId}
+          AutoScaleInstances: ${opt:AutoScaleInstances}
+          CertificateArn: ${opt:CertificateArn}
+          Environment: !FindInMap [ Environments, '${opt:Stage}', Environment ]
+          ExternalLoadBalancerSecurityGroup: !Ref ExternalLoadBalancerSecurityGroup
+          IamInstanceProfile: !Ref IamInstanceProfile
+          Region: ${opt:Region}
+          PhpVersion: ${opt:PhpVersion}
+          ServicesSshSecurityGroup: !Ref ServicesSshSecurityGroup
+          ServicesHttpSecurityGroup: !Ref ServicesHttpSecurityGroup
+          ServiceName: ${opt:App}
+          SnsAutoScaleNotify: !Ref SnsAutoScaleNotify
+          Stage: ${opt:Stage}
+          StackName: ${self:custom.StackName}
+          SubnetGroupList: !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], public ]
+          SplunkVersion: ${self:custom.SplunkVersion}
+          Team: ${opt:Team}
+          Version: ${opt:Version}
+          VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+          VPCZoneIdentifier: !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], privateNat ]
+          WebEc2InstanceType: ${opt:WebEc2InstanceType}
+        TemplateURL: ${self:custom.StackUrl}mutual-auth.yml
+
+    MutualAuthAppDeploymentGroup:
+      Type: AWS::CodeDeploy::DeploymentGroup
+      Condition: HasMutualAuth
+      Properties:
+        ApplicationName: ${opt:App}
+        AutoRollbackConfiguration:
+          Enabled: false
+          Events:
+            - DEPLOYMENT_FAILURE
+            - DEPLOYMENT_STOP_ON_ALARM
+            - DEPLOYMENT_STOP_ON_REQUEST
+        AutoScalingGroups:
+          - !Ref AutoScalingGroup
+          - !GetAtt MutualAuthStack.Outputs.AutoScalingGroup
+        DeploymentConfigName: CodeDeployDefault.OneAtATime
+        DeploymentGroupName: ${opt:Stage}
+        DeploymentStyle:
+          DeploymentOption: WITHOUT_TRAFFIC_CONTROL
+          DeploymentType: IN_PLACE
+        Ec2TagFilters:
+          - Key: Name
+            Value: ${opt:App}-${opt:Stage}-web
+            Type: KEY_AND_VALUE
+          - Key: Name
+            Value: ${opt:App}-${opt:Stage}-web-ma
+            Type: KEY_AND_VALUE
+        ServiceRoleArn: 'arn:aws:iam::${opt:AccountId}:role/CodeDeploy'
+      DependsOn:
+        - MutualAuthStack
+
+  Outputs:
+
+    AutoScalingGroup:
+      Value: !Ref AutoScalingGroup
+
+    LoadBalancer:
+      Value: !Ref LoadBalancer
+
+    LoadBalancerDnsName:
+      Description: DatabaseRouteTable
+      Value: !GetAtt LoadBalancer.DNSName
+
+    TargetGroup:
+      Value: !Ref TargetGroup
+
+    VpcId:
+      Value: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]

@@ -1,0 +1,57 @@
+service:
+
+  name: ${opt:client,''chargebacks911''}-Autoscale
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  runtime: python3.7
+  stage: ${opt:stage,''dev''}
+  memorySize: 256
+  timeout: 15
+  region: ${opt:region,''us-east-1''}
+  stackName: ${opt:client}-Autoscale-Lambda-${self:provider.stage}
+
+functions:
+
+  launch:
+    handler: index.lambda_handler
+    role: LambdaIamRole
+
+resources:
+
+  Resources:
+    LambdaIamRole:
+      Type: AWS::IAM::Role
+      Properties:
+        Path: /
+        RoleName: LambdaRole-${opt:client}-Autoscale-${self:provider.stage}
+        AssumeRolePolicyDocument:
+          Version: 2012-10-17
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: LambdaPolicy-${self:provider.stackName}-${self:provider.stage}
+            PolicyDocument:
+              Version: 2012-10-17
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - 'sns:*'
+                    - 'sqs:*'
+                    - 'ec2:*'
+                    - 's3:*'
+                    - 'logs:*'
+                  Resource: '*'
+        Tags:
+          - Key: App
+            Value: devops
+          - Key: Stage
+            Value: ${opt:stage}

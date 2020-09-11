@@ -1,0 +1,103 @@
+service:
+
+  name: ${opt:App}
+
+provider:
+
+  deploymentBucket:
+    name: 492239587024-serverless-deployment
+
+  name: aws
+  stage: ${opt:Stage,''dev''}
+  region: ${opt:Region,''us-east-1''}
+  stackName: ${opt:App}-${opt:Stage}-elastic-search
+  stackTags:
+    owner: ${opt:Owner, ''Nobody''}
+
+custom:
+  stages:
+    - sales
+    - dev
+    - dev-demo
+    - uat
+    - qa
+    - sbx
+    - mig
+    - pa1
+    - prd
+    - sbx
+    - demo
+    - cron
+
+  ElasticSearchInstanceType: ${opt:ElasticSearchInstanceType,'none'}
+  StackName: ${opt:App}-${opt:Stage}-elastic-search
+  StackUrl: ${opt:StackUrl}
+
+resources:
+
+  Mappings:
+
+    Cidrs:
+      #main-prd-vpc
+      vpc-06d9599bc403469f9:
+        Cidr: 10.193.0.0/16
+
+      #main-dev-vpc
+      vpc-0bb6c7d7d3ac936d4:
+        Cidr: 10.192.0.0/16
+
+    Subnets:
+      #main-prd-vpc
+      vpc-06d9599bc403469f9:
+        private: subnet-0520f936a41312456,subnet-0223b98b7f2abb744,subnet-0c352db2a19e5b440
+        privateNat: subnet-0a285cea25c5576a7,subnet-0881bfbac3d908d2a,subnet-05aa6e1e0d8054668
+        public: subnet-08ba85285cc61f3bc,subnet-0f0978328a8925c71,subnet-0e54caa00266e93d5
+
+      #main-dev-vpc
+      vpc-0bb6c7d7d3ac936d4:
+        private: subnet-0c34414bca0569883,subnet-06a5cbc0a5b538229,subnet-0f19d11e10a5d0aed
+        privateNat: subnet-0742cdf24e8ef1f17,subnet-03147e63245e28f94,subnet-0677ffeecfbaaaa66
+        public: subnet-0541716ffb462e081,subnet-0448f55ac95ec7789,subnet-042eb1a5009dd959a
+
+    VpcIds:
+      prd:
+        #main-prd-vpc
+        VpcId: vpc-06d9599bc403469f9
+      dev:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      demo:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      sales:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      dev-demo:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      qa:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      sbx:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      uat:
+        #main-dev-vpc
+        VpcId: vpc-0bb6c7d7d3ac936d4
+      cron:
+        #main-prd-vpc
+        VpcId: vpc-06d9599bc403469f9
+
+  Resources:
+
+    ElasticSearchStack:
+      Type: AWS::CloudFormation::Stack
+      Properties:
+        Parameters:
+          ElasticSearchInstanceType: ${self:custom.ElasticSearchInstanceType}
+          ServiceName: ${opt:App}
+          Stage: ${opt:Stage}
+          SubnetGroupList: !FindInMap [ Subnets, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], private ]
+          VpcCidrBlock: !FindInMap [ Cidrs, !FindInMap [ VpcIds, '${opt:Stage}', VpcId ], Cidr ]
+          VpcId: !FindInMap [ VpcIds, '${opt:Stage}', VpcId ]
+        TemplateURL: ${self:custom.StackUrl}elasticsearch.yml

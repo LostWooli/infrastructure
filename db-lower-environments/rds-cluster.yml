@@ -1,0 +1,227 @@
+Parameters:
+
+  AuroraMySqlEngineVersion:
+    Type: String
+    Default: 5.7.mysql_aurora.2.04.1
+
+  CreateDns:
+    Default: true
+    Type: String
+
+  DatabaseSubnetA:
+    Type: AWS::EC2::Subnet::Id
+
+  DatabaseSubnetB:
+    Type: AWS::EC2::Subnet::Id
+
+  RdsInstanceType:
+    Type: String
+
+  ServiceName:
+    Type: String
+
+  SnapshotIdentifier:
+    Type: String
+
+  Stage:
+    Type: String
+
+  Version:
+    Type: String
+
+  VpcCidrBlock:
+    Type: String
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+Conditions:
+
+  ShouldCreateDns: !Equals [ !Ref CreateDns, true ]
+
+Resources:
+
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: 'Only allow inbound Mysql Connections from the VPC'
+      GroupName: !Sub ${ServiceName}-${Stage}-database-security-group
+      SecurityGroupIngress:
+        - CidrIp: !Ref VpcCidrBlock
+          FromPort: 3306
+          ToPort: 3306
+          IpProtocol: tcp
+      Tags:
+        - Key: APP
+          Value: !Ref ServiceName
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Team
+          Value: !Ref Team
+      VpcId: !Ref VpcId
+
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub Default RDS subnet group for ${ServiceName}
+      #If this name ever changes, look in the DatabaseCluster object in this file and change the same there
+      DBSubnetGroupName: !Sub ${ServiceName}-${Stage}-database-subnet-group
+      SubnetIds:
+        - !Ref DatabaseSubnetA
+        - !Ref DatabaseSubnetB
+      Tags:
+        - Key: APP
+          Value: !Ref ServiceName
+        - Key: Name
+          Value: !Sub ${ServiceName}-${Stage}-database-subnet-group
+        - Key: Environment
+          Value: dev
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Team
+          Value: !Ref Team
+
+  DbParameterGroup:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: !Sub ${ServiceName}-${Stage}-parameter-group
+      Family: aurora-mysql5.7
+      Parameters:
+        group_concat_max_len: 10240
+        innodb_buffer_pool_size: '{DBInstanceClassMemory*2/3}'
+        innodb_file_format: Barracuda
+        innodb_large_prefix: 1
+        log_bin_trust_function_creators: 1
+        max_allowed_packet: 33554432
+        query_cache_size: '{DBInstanceClassMemory/40}'
+        sql_mode: IGNORE_SPACE
+        slow_query_log: 1
+      Tags:
+        - Key: APP
+          Value: !Ref ServiceName
+        - Key: Name
+          Value: !Sub ${ServiceName}-${Stage}-database-parameter-group
+        - Key: Environment
+          Value: dev
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Team
+          Value: !Ref Team
+
+  DbClusterParameterGroup:
+    Type: AWS::RDS::DBClusterParameterGroup
+    Properties:
+      Description: !Sub ${ServiceName}-${Stage}-cluster-parameter-group
+      Family: aurora-mysql5.7
+      Parameters:
+        binlog_format: MIXED
+        character_set_database: utf8mb4
+        group_concat_max_len: 10240
+      Tags:
+        - Key: APP
+          Value: !Ref ServiceName
+        - Key: Name
+          Value: !Sub ${ServiceName}
+        - Key: Environment
+          Value: dev
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Team
+          Value: !Ref Team
+
+  DatabaseCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      AvailabilityZones:
+        - !Join [ "", [ !Ref 'AWS::Region', 'a' ] ]
+        - !Join [ "", [ !Ref 'AWS::Region', 'b' ] ]
+      DBClusterParameterGroupName: !Ref DbClusterParameterGroup
+      DBClusterIdentifier: !Sub ${ServiceName}-${Stage}-aurora-cluster-${Version}
+      DBSubnetGroupName: !Sub ${ServiceName}-${Stage}-database-subnet-group
+      EnableCloudwatchLogsExports:
+        - slowquery
+      Engine: aurora-mysql
+      EngineVersion: !Ref AuroraMySqlEngineVersion
+      PreferredBackupWindow: 01:00-02:00
+      PreferredMaintenanceWindow: sat:02:00-sat:03:00
+      SnapshotIdentifier: !Ref SnapshotIdentifier
+      StorageEncrypted: true
+      Tags:
+        - Key: APP
+          Value: !Ref ServiceName
+        - Key: Name
+          Value: !Sub ${ServiceName}-${Stage}-aurora-cluster-${Version}
+        - Key: Service
+          Value: !Ref ServiceName
+        - Key: Environment
+          Value: dev
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Team
+          Value: !Ref Team
+      VpcSecurityGroupIds:
+        - !Ref DatabaseSecurityGroup
+    DependsOn:
+      - DbClusterParameterGroup
+
+  DatabaseInstance01:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref DatabaseCluster
+      DBInstanceClass: !Ref RdsInstanceType
+      DBInstanceIdentifier: !Sub ${ServiceName}-${Stage}-aurora-instance-${Version}-1
+      DBParameterGroupName: !Ref DbParameterGroup
+      Engine: aurora-mysql
+      EngineVersion: !Ref AuroraMySqlEngineVersion
+      Tags:
+        - Key: APP
+          Value: !Ref ServiceName
+        - Key: Name
+          Value: !Sub ${ServiceName}-aurora-instance-${Version}-1
+        - Key: Service
+          Value: !Ref ServiceName
+        - Key: Environment
+          Value: dev
+        - Key: Stage
+          Value: !Ref Stage
+        - Key: Team
+          Value: !Ref Team
+    DependsOn:
+      - DatabaseCluster
+      - DbParameterGroup
+
+  ReadEndpointRoute53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Condition: ShouldCreateDns
+    Properties:
+      #Hardcoded rds.chargebacks911.com
+      HostedZoneId: Z19NDRWV8W6AT7
+      Name: !Sub ${ServiceName}-${Stage}-ro.rds.chargebacks911.com
+      ResourceRecords:
+        - !GetAtt DatabaseCluster.ReadEndpoint.Address
+      TTL: 300
+      Type: CNAME
+    DependsOn:
+      - DatabaseCluster
+
+  SlowQueryLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/rds/cluster/${DatabaseCluster}/slowquery
+      RetentionInDays: 30
+    DependsOn:
+      - DatabaseCluster
+
+  WriteEndpointRoute53RecordSet:
+    Type: AWS::Route53::RecordSet
+    Condition: ShouldCreateDns
+    Properties:
+      #Hardcoded rds.chargebacks911.com
+      HostedZoneId: Z19NDRWV8W6AT7
+      Name: !Sub ${ServiceName}-${Stage}.rds.chargebacks911.com
+      ResourceRecords:
+        - !GetAtt DatabaseCluster.Endpoint.Address
+      TTL: 300
+      Type: CNAME
+    DependsOn:
+      - DatabaseCluster

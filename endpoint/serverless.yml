@@ -1,0 +1,87 @@
+service:
+  name: 'api-checker-${opt:lambdaname}'
+
+provider:
+
+   deploymentBucket:
+      name: 492239587024-serverless-deployment
+
+   name: aws
+   runtime: python3.7
+   memorySize: 256
+   timeout: 15
+   region: ${opt:region,''us-east-1''}
+   stackName: 'api-checker-Lambda-${opt:lambdaname}'
+   #endpoint: 'https://google.com'
+   tags:
+      name: '${opt:lambdaname}'
+
+functions:
+   api:
+      name: Endpoint-api-checker-${opt:lambdaname}
+      handler: lambda_function.lambda_handler
+      role: myCustRole0
+      environment:
+         #protocol: ${opt:protocol, 'https://'}
+         #endpoint: ${self:provider.endpoint}
+         #path: ${opt:path, ''''}
+         splunkurl: splunk.internal.chargebacks911.com
+      events:
+         - schedule:
+            name: 'Check-api-${opt:lambdaname}'
+            rate: rate(5 minutes)
+            enabled: true
+      vpc:
+         #securityGroupIds: #Main-dev
+         #- sg-06606771bd3dc3b33
+         #subnetIds: 
+         #- subnet-0742cdf24e8ef1f17
+         #- subnet-03147e63245e28f94
+         #- subnet-0677ffeecfbaaaa66
+         #securityGroupIds: #Main-prd
+         #- sg-0ae524381fcc58856
+         #subnetIds: 
+         #- subnet-05aa6e1e0d8054668
+         #- subnet-0881bfbac3d908d2a
+         #- subnet-0a285cea25c5576a7
+         securityGroupIds: #worldpay-prd-vpc
+         - sg-05dde6ee57761b54e
+         subnetIds: 
+         - subnet-07fcb5156f3c79707
+         - subnet-0ee87f292883e64d6
+         - subnet-0cee35f913e88aef2
+resources:
+   Resources:
+
+      myCustRole0:
+         Type: 'AWS::IAM::Role'
+         Properties:
+            Path: /
+            RoleName: 'LambdaRole-${self:provider.stackName}'
+            AssumeRolePolicyDocument:
+               Version: '2012-10-17'
+               Statement:
+                  -
+                     Effect: Allow
+                     Principal:
+                        Service:
+                           - lambda.amazonaws.com
+                     Action: 'sts:AssumeRole'
+            Policies:
+               -
+                  PolicyName: 'LambdaPolicy-${self:provider.stackName}'
+                  PolicyDocument:
+                     Version: '2012-10-17'
+                     Statement:
+                        -
+                           Effect: Allow
+                           Action:
+                              - 'sns:*'
+                              - 'sqs:*'
+                              - 'ec2:*'
+                              - 's3:*'
+                              - 'logs:*'
+                              - 'lambda:*'
+                              - 'cloudwatch:*'
+                              - 'ssm:*'
+                           Resource: '*'
